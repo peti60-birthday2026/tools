@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b10">
+<title>Lightshow Fernbedienung</title>
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+<style>
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:#0b0b10; color:#fff; font-family:'Segoe UI', system-ui, Arial, sans-serif; }
+  body { padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  input[type=range] { accent-color:#c026d3; width:100%; height:32px; margin:0; touch-action:manipulation; }
+
+  header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+  h1 { margin:0; font-size:22px; letter-spacing:0.3px; }
+  h2 { margin:0 0 12px; font-size:13px; text-transform:uppercase; letter-spacing:1.2px; color:rgba(255,255,255,0.5); font-weight:600; }
+  .chips { display:flex; gap:8px; }
+  .chip { display:flex; align-items:center; gap:7px; background:rgba(255,255,255,0.07); border-radius:999px; padding:7px 12px; font-size:13px; font-weight:600; }
+  .dot { width:9px; height:9px; border-radius:50%; background:#6b7280; display:inline-block; flex-shrink:0; }
+  .dot.ok { background:#22c55e; }
+  .dot.bad { background:#ef4444; }
+  .dot.wait { background:#f59e0b; }
+
+  .card { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:16px; margin-bottom:14px; }
+  .muted { color:rgba(255,255,255,0.55); font-size:13px; }
+  .grid { display:grid; grid-template-columns:1fr; gap:0 16px; }
+  @media (min-width: 860px) { .grid { grid-template-columns: 1fr 1fr; align-items:start; } }
+
+  details.card > summary { cursor:pointer; list-style:none; font-size:15px; font-weight:600; display:flex; justify-content:space-between; gap:10px; align-items:center; }
+  details.card > summary::-webkit-details-marker { display:none; }
+  details.card[open] > summary { margin-bottom:14px; }
+  label { display:block; font-size:12.5px; color:rgba(255,255,255,0.6); margin:10px 0 6px; }
+  .txt { width:100%; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.14); color:#fff; border-radius:11px; padding:13px 14px; font-size:16px; font-family:inherit; }
+  .txt:focus { outline:none; border-color:#c026d3; }
+
+  button { font-family:inherit; touch-action:manipulation; cursor:pointer; border:none; color:#fff; border-radius:13px; font-size:16px; font-weight:600; min-height:52px; padding:0 16px; transition: transform .12s, background .15s; }
+  button:active { transform:scale(0.97); }
+  .primary { background:linear-gradient(135deg,#7c3aed,#c026d3); }
+  .ghost { background:rgba(255,255,255,0.09); }
+  .ghost:hover { background:rgba(255,255,255,0.15); }
+  .btnrow { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
+  #btn-connect { width:100%; margin-top:14px; }
+
+  .live-effect { display:flex; align-items:center; gap:14px; font-size:28px; font-weight:700; margin-bottom:4px; }
+  #live-icon { font-size:30px; min-width:48px; text-align:center; color:#d946ef; }
+  .radar { height:8px; background:rgba(255,255,255,0.1); border-radius:99px; margin:14px 0 8px; overflow:hidden; }
+  #radar-fill { height:100%; width:0%; background:linear-gradient(90deg,#7c3aed,#c026d3); border-radius:99px; transition:width .3s; }
+
+  .toggle { display:flex; align-items:center; justify-content:space-between; gap:12px; background:rgba(255,255,255,0.06); border-radius:13px; padding:15px 16px; margin-bottom:10px; cursor:pointer; user-select:none; font-weight:600; font-size:15px; }
+  .switch { width:48px; height:28px; background:rgba(255,255,255,0.18); border-radius:999px; position:relative; transition:background .2s; flex-shrink:0; }
+  .switch::after { content:''; position:absolute; top:3px; left:3px; width:22px; height:22px; background:#fff; border-radius:50%; transition:left .2s; }
+  .toggle.on .switch { background:linear-gradient(135deg,#7c3aed,#c026d3); }
+  .toggle.on .switch::after { left:23px; }
+
+  .slider { margin-top:16px; }
+  .srow { display:flex; justify-content:space-between; font-size:14px; font-weight:600; margin-bottom:4px; }
+
+  .effects { display:grid; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); gap:10px; }
+  .eff { background:rgba(255,255,255,0.06); border:2px solid transparent; border-radius:13px; padding:14px 4px 12px; text-align:center; cursor:pointer; user-select:none; }
+  .eff:active { transform:scale(0.96); }
+  .eff.active { border-color:#c026d3; background:rgba(192,38,211,0.2); }
+  .eff .i { font-size:22px; display:block; margin-bottom:6px; }
+  .eff .n { font-size:12.5px; font-weight:600; }
+
+  .swatches { display:flex; flex-wrap:wrap; gap:12px; }
+  .sw { width:46px; height:46px; border-radius:50%; border:3px solid transparent; cursor:pointer; }
+  .sw.active { border-color:#fff; }
+  .note { font-size:12.5px; color:rgba(255,255,255,0.4); line-height:1.5; margin:4px 4px 0; }
+
+  #toast { position:fixed; left:50%; bottom:max(24px, env(safe-area-inset-bottom)); transform:translateX(-50%) translateY(20px); background:#1f1f2a; border:1px solid rgba(255,255,255,0.15); padding:11px 18px; border-radius:12px; font-size:14px; opacity:0; pointer-events:none; transition:all .25s; max-width:90vw; text-align:center; }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Lightshow</h1>
+    <div class="chips">
+      <span class="chip"><span class="dot" id="dot-ably"></span>Ably</span>
+      <span class="chip"><span class="dot" id="dot-show"></span>Show</span>
+    </div>
+  </header>
+
+  <details class="card" id="conn" open>
+    <summary><span>Verbindung</span><span class="muted" id="conn-text">Nicht verbunden</span></summary>
+    <label for="key">Ably API-Key</label>
+    <input class="txt" id="key" type="password" autocomplete="off" spellcheck="false" placeholder="Key aus dem Ably-Dashboard">
+    <label for="room">Raum-Code (derselbe wie in ls.html)</label>
+    <input class="txt" id="room" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="z. B. geburtstag-anna">
+    <button class="primary" id="btn-connect">Verbinden</button>
+  </details>
+
+  <div class="grid">
+    <section>
+      <div class="card">
+        <div class="live-effect"><span id="live-icon">&#9679;</span><span id="live-name">&ndash;</span></div>
+        <div class="muted" id="live-sub">Warte auf die Show &hellip;</div>
+        <div class="radar"><div id="radar-fill"></div></div>
+        <div class="muted" id="live-last">Noch kein Wechsel erkannt</div>
+      </div>
+
+      <div class="card">
+        <div class="btnrow">
+          <button class="primary" id="btn-next">N&auml;chster Effekt</button>
+          <button class="ghost" id="btn-panel">Panel ausblenden</button>
+        </div>
+        <div class="toggle" id="t-auto"><span>Automatik (Songwechsel)</span><div class="switch"></div></div>
+        <div class="toggle" id="t-cycle"><span>Farben flie&szlig;end wechseln</span><div class="switch"></div></div>
+        <div class="slider">
+          <div class="srow"><span>Wechsel-Empfindlichkeit</span><b id="sens-out">6</b></div>
+          <input type="range" id="sens" min="1" max="10" step="1" value="6">
+        </div>
+        <div class="slider">
+          <div class="srow"><span>Verst&auml;rkung</span><b id="gain-out">100%</b></div>
+          <input type="range" id="gain" min="1" max="8" step="0.1" value="1">
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="card"><h2>Effekt</h2><div class="effects" id="effects"></div></div>
+      <div class="card"><h2>Farben</h2><div class="swatches" id="swatches"></div></div>
+      <p class="note">Mikrofon, Datei, Tab-Audio und Vollbild lassen sich aus Browser-Sicherheitsgr&uuml;nden nur direkt am Show-Laptop starten. Alles andere steuerst du von hier.</p>
+    </section>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+(function(){
+  // Muss zu ls.html passen (gleiche IDs).
+  const EFFECTS = [
+    { id:'waves', name:'Wellen', icon:'○' },
+    { id:'blobs', name:'Farbflecken', icon:'⬤' },
+    { id:'circles', name:'Kreis-Balken', icon:'●' },
+    { id:'kaleido', name:'Kaleidoskop', icon:'✦' },
+    { id:'rings', name:'Ringpulse', icon:'◯' },
+    { id:'grid', name:'Gitter-Pulse', icon:'▦' },
+    { id:'bars', name:'Spektrum', icon:'▁▃▅' },
+    { id:'tunnel', name:'Tunnel', icon:'◎' },
+    { id:'galaxy', name:'Galaxie', icon:'✺' },
+    { id:'fireworks', name:'Feuerwerk', icon:'✴' },
+    { id:'lasers', name:'Laser', icon:'╱╲' },
+    { id:'stars', name:'Sternenflug', icon:'☆' },
+    { id:'scope', name:'Oszilloskop', icon:'∿' }
+  ];
+  const PALETTES = {
+    party:  { label:'Party',  hue:280 },
+    ice:    { label:'Eis',    hue:190 },
+    warm:   { label:'Gold',   hue:30 },
+    neon:   { label:'Neon',   hue:320 },
+    sunset: { label:'Sunset', hue:10 },
+    mono:   { label:'Mono',   hue:210 }
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const keyEl = $('key'), roomEl = $('room'), btnConnect = $('btn-connect');
+  const connBox = $('conn'), connText = $('conn-text');
+  const dotAbly = $('dot-ably'), dotShow = $('dot-show');
+  const effectsEl = $('effects'), swatchesEl = $('swatches');
+  const sensEl = $('sens'), gainEl = $('gain'), sensOut = $('sens-out'), gainOut = $('gain-out');
+
+  let ably = null, channel = null, connected = false, showSeen = 0;
+  let st = { effect:null, auto:true, palette:'party', cycle:false, sens:6, gain:1, panelHidden:false, active:false };
+  let radar = { r:0, ago:-1, why:'' };
+  const dragUntil = { sens:0, gain:0 };
+
+  function lsGet(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } }
+  function lsSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+
+  let toastT = null;
+  function toast(msg){
+    const t = $('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastT);
+    toastT = setTimeout(() => t.classList.remove('show'), 2200);
+  }
+
+  effectsEl.innerHTML = EFFECTS.map(e =>
+    '<div class="eff" data-id="' + e.id + '"><span class="i">' + e.icon + '</span><span class="n">' + e.name + '</span></div>'
+  ).join('');
+  swatchesEl.innerHTML = Object.keys(PALETTES).map(k =>
+    '<div class="sw" data-k="' + k + '" title="' + PALETTES[k].label + '" style="background:hsl(' + PALETTES[k].hue + ',70%,55%)"></div>'
+  ).join('');
+
+  function render(){
+    const eff = EFFECTS.find(e => e.id === st.effect);
+    $('live-icon').textContent = eff ? eff.icon : '●';
+    $('live-name').textContent = eff ? eff.name : '–';
+    const pal = PALETTES[st.palette];
+    $('live-sub').textContent = !eff ? 'Warte auf die Show …'
+      : (st.active ? '' : 'Keine Musik aktiv · ') + (st.auto ? 'Automatik an' : 'Automatik aus') + ' · Palette ' + (pal ? pal.label : st.palette);
+    effectsEl.querySelectorAll('.eff').forEach(c => c.classList.toggle('active', c.dataset.id === st.effect));
+    swatchesEl.querySelectorAll('.sw').forEach(c => c.classList.toggle('active', c.dataset.k === st.palette));
+    $('t-auto').classList.toggle('on', !!st.auto);
+    $('t-cycle').classList.toggle('on', !!st.cycle);
+    $('btn-panel').textContent = st.panelHidden ? 'Panel einblenden' : 'Panel ausblenden';
+    const now = Date.now();
+    if (now > dragUntil.sens){ sensEl.value = st.sens; sensOut.textContent = st.sens; }
+    if (now > dragUntil.gain){ gainEl.value = st.gain; gainOut.textContent = Math.round(st.gain*100) + '%'; }
+  }
+  function renderRadar(){
+    $('radar-fill').style.width = Math.max(0, Math.min(100, radar.r)) + '%';
+    $('live-last').textContent = radar.ago < 0 ? 'Noch kein Wechsel erkannt'
+      : 'Letzter Wechsel: vor ' + radar.ago + ' s (' + (radar.why || 'Wechsel') + ')';
+  }
+  function renderChips(){
+    dotAbly.className = 'dot' + (connected ? ' ok' : (ably ? ' wait' : ''));
+    dotShow.className = 'dot' + (connected && Date.now() - showSeen < 20000 ? ' ok' : (connected ? ' bad' : ''));
+  }
+  setInterval(renderChips, 1000);
+
+  function setConn(text, ok){
+    connText.textContent = text;
+    connText.style.color = ok === false ? '#f87171' : '';
+  }
+
+  function send(type, value){
+    if (!channel || !connected){ toast('Nicht verbunden'); return; }
+    Promise.resolve(channel.publish('cmd', { type: type, value: value })).catch(() => toast('Senden fehlgeschlagen'));
+  }
+
+  // --- Bedienung ---
+  effectsEl.addEventListener('click', (e) => {
+    const c = e.target.closest('.eff'); if (!c) return;
+    st.effect = c.dataset.id; st.auto = false; render(); send('effect', st.effect);
+  });
+  swatchesEl.addEventListener('click', (e) => {
+    const c = e.target.closest('.sw'); if (!c) return;
+    st.palette = c.dataset.k; st.cycle = false; render(); send('palette', st.palette);
+  });
+  $('t-auto').addEventListener('click', () => { st.auto = !st.auto; render(); send('auto', st.auto); });
+  $('t-cycle').addEventListener('click', () => { st.cycle = !st.cycle; render(); send('cycle', st.cycle); });
+  $('btn-next').addEventListener('click', () => send('next'));
+  $('btn-panel').addEventListener('click', () => { st.panelHidden = !st.panelHidden; render(); send('panel', st.panelHidden); });
+
+  function bindSlider(el, name, outEl, fmt, type){
+    let last = 0, timer = null;
+    el.addEventListener('input', () => {
+      const v = Number(el.value);
+      st[name] = v; outEl.textContent = fmt(v);
+      dragUntil[name] = Date.now() + 1200;
+      const now = Date.now();
+      clearTimeout(timer);
+      if (now - last > 120){ last = now; send(type, v); }
+      else timer = setTimeout(() => { last = Date.now(); send(type, Number(el.value)); }, 130);
+    });
+  }
+  bindSlider(sensEl, 'sens', sensOut, v => String(Math.round(v)), 'sens');
+  bindSlider(gainEl, 'gain', gainOut, v => Math.round(v*100) + '%', 'gain');
+
+  // --- Ably ---
+  function onState(m){ showSeen = Date.now(); st = Object.assign(st, m.data || {}); render(); renderChips(); }
+  function onRadar(m){ showSeen = Date.now(); radar = Object.assign(radar, m.data || {}); renderRadar(); }
+
+  function disconnect(){
+    try { if (ably) ably.close(); } catch(e){}
+    ably = null; channel = null; connected = false;
+    btnConnect.textContent = 'Verbinden';
+    setConn('Nicht verbunden');
+    renderChips();
+  }
+
+  async function connect(){
+    const key = keyEl.value.trim();
+    const room = roomEl.value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
+    if (!key || !room){ setConn('Key und Raum-Code eingeben', false); return; }
+    if (typeof Ably === 'undefined'){ setConn('Ably-Bibliothek nicht geladen (Internet prüfen)', false); return; }
+    disconnect();
+    roomEl.value = room;
+    lsSet('ls_remote_key', key); lsSet('ls_remote_room', room); lsSet('ls_remote_auto', '1');
+    try {
+      ably = new Ably.Realtime({ key: key, echoMessages: false });
+    } catch(e){ ably = null; setConn('Ungültiger Key', false); return; }
+    btnConnect.textContent = 'Trennen';
+    setConn('Verbinde …');
+    ably.connection.on((change) => {
+      const s = change.current;
+      if (s === 'connected'){
+        connected = true; setConn('Verbunden, Raum "' + room + '"', true);
+        connBox.open = false;
+        if (channel) channel.publish('hello', {});
+      } else {
+        connected = false;
+        if (s === 'failed') setConn('Fehler: ' + ((change.reason && change.reason.message) || 'Verbindung fehlgeschlagen'), false);
+        else if (s === 'disconnected' || s === 'suspended') setConn('Getrennt, versuche es erneut …', false);
+        else if (s === 'connecting') setConn('Verbinde …');
+      }
+      renderChips();
+    });
+    channel = ably.channels.get('ls:' + room);
+    try {
+      await channel.subscribe('state', onState);
+      await channel.subscribe('radar', onRadar);
+      channel.publish('hello', {});
+    } catch(e){
+      setConn('Kein Zugriff: ' + ((e && e.message) || e), false);
+      connBox.open = true;
+    }
+  }
+
+  btnConnect.addEventListener('click', () => {
+    if (ably){ lsSet('ls_remote_auto', '0'); disconnect(); } else connect();
+  });
+  [keyEl, roomEl].forEach(el => el.addEventListener('keydown', (e) => { if (e.key === 'Enter') connect(); }));
+
+  setInterval(() => { if (connected && channel) channel.publish('ping', {}); }, 8000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && connected && channel) channel.publish('hello', {});
+  });
+
+  // Start: Link-Parameter (#k=KEY&r=RAUM) oder gespeicherte Werte
+  (function init(){
+    const h = new URLSearchParams(location.hash.replace(/^#/, ''));
+    if (h.get('k') && h.get('r')){
+      keyEl.value = h.get('k'); roomEl.value = h.get('r'); lsSet('ls_remote_auto', '1');
+      try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
+    } else {
+      keyEl.value = lsGet('ls_remote_key'); roomEl.value = lsGet('ls_remote_room');
+    }
+    render(); renderRadar(); renderChips();
+    if (keyEl.value && roomEl.value && (lsGet('ls_remote_auto') === '1' || h.get('k'))) connect();
+  })();
+})();
+</script>
+</body>
+</html>

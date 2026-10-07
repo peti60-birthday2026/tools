@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lightshow Start</title>
+<style>
+:root{--bg:#09090d;--card:#16161d;--line:#2a2a36;--txt:#f2f2f7;--mut:#8b8b9c;--a:#7c3aed;--b:#c026d3}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px;background:radial-gradient(900px 500px at 20% 0%,#2a1250 0%,transparent 60%),radial-gradient(700px 500px at 100% 100%,#0f3a52 0%,transparent 60%),var(--bg);color:var(--txt);font:16px/1.4 system-ui,Segoe UI,sans-serif}
+.box{width:100%;max-width:460px;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:26px}
+h1{margin:0 0 4px;font-size:28px}
+p{color:var(--mut);margin:0 0 18px;font-size:14px}
+label{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin:14px 0 6px}
+input{width:100%;padding:13px 14px;border-radius:12px;border:1px solid var(--line);background:#0e0e14;color:var(--txt);font:inherit}
+input:focus{outline:2px solid var(--a);border-color:transparent}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
+a.btn,button{display:block;text-align:center;text-decoration:none;color:#fff;border:0;border-radius:14px;padding:15px 10px;font:600 16px system-ui;cursor:pointer;background:linear-gradient(135deg,var(--a),var(--b))}
+a.btn.alt,button.alt{background:#262633}
+a.disabled{opacity:.4;pointer-events:none}
+button.full{width:100%;margin-top:10px}
+.note{margin-top:16px;font-size:13px;color:var(--mut)}
+.ok{color:#4ade80}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>Lightshow</h1>
+  <p>Einmal Key und Raum eingeben. Show und Fernbedienung verbinden sich dann automatisch.</p>
+  <label for="key">Ably API-Key</label>
+  <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="xxxxxx.yyyyyy:zzzzzz">
+  <label for="room">Raum-Code</label>
+  <input id="room" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="geburtstag">
+  <div class="row">
+    <a class="btn" id="go-show" href="ls.html">Show starten</a>
+    <a class="btn alt" id="go-remote" href="remote.html">Fernbedienung</a>
+  </div>
+  <button class="alt full" id="copy">Fernbedienungs-Link kopieren</button>
+  <div class="note" id="note">Ohne Key startest du die Show auch ohne Fernsteuerung.</div>
+</div>
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const key=$('key'), room=$('room');
+  function get(k){try{return localStorage.getItem(k)||''}catch(e){return ''}}
+  function set(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+  key.value=get('ls_idx_key'); room.value=get('ls_idx_room');
+  function clean(){return room.value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g,'-');}
+  function frag(){
+    const k=key.value.trim(), r=clean();
+    return (k&&r) ? '#k='+encodeURIComponent(k)+'&r='+encodeURIComponent(r) : '';
+  }
+  function update(){
+    set('ls_idx_key',key.value.trim()); set('ls_idx_room',clean());
+    $('go-show').href='ls.html'+frag();
+    $('go-remote').href='remote.html'+frag();
+    $('note').textContent = frag() ? 'Bereit. Beide Seiten bekommen Key und Raum automatisch.' : 'Ohne Key startest du die Show auch ohne Fernsteuerung.';
+    $('note').className = 'note'+(frag()?' ok':'');
+  }
+  key.addEventListener('input',update); room.addEventListener('input',update);
+  $('copy').addEventListener('click',async()=>{
+    if(!frag()){$('note').textContent='Erst Key und Raum eintragen.';return;}
+    const url=new URL('remote.html'+frag(),location.href).href;
+    try{await navigator.clipboard.writeText(url);$('note').textContent='Link kopiert. Auf dem Handy öffnen.';}
+    catch(e){prompt('Link kopieren:',url);}
+  });
+  update();
+})();
+</script>
+</body>
+</html>
