@@ -127,6 +127,10 @@
           <input type="range" id="sens" min="1" max="10" step="1" value="6">
         </div>
         <div class="slider">
+          <div class="srow"><span>Nachhall (Spuren)</span><b id="trail-out">4</b></div>
+          <input type="range" id="trail" min="0" max="10" step="1" value="4">
+        </div>
+        <div class="slider">
           <div class="srow"><span>Verst&auml;rkung</span><b id="gain-out">100%</b></div>
           <input type="range" id="gain" min="1" max="8" step="0.1" value="1">
         </div>
@@ -159,7 +163,14 @@
     { id:'fireworks', name:'Feuerwerk', icon:'✴' },
     { id:'lasers', name:'Laser', icon:'╱╲' },
     { id:'stars', name:'Sternenflug', icon:'☆' },
-    { id:'scope', name:'Oszilloskop', icon:'∿' }
+    { id:'scope', name:'Oszilloskop', icon:'∿' },
+    { id:'aurora', name:'Polarlicht', icon:'≈' },
+    { id:'spiral', name:'Spirale', icon:'@' },
+    { id:'hex', name:'Waben', icon:'⬢' },
+    { id:'rain', name:'Neon-Regen', icon:'↓' },
+    { id:'bolt', name:'Blitze', icon:'ϟ' },
+    { id:'pulsar', name:'Pulsar', icon:'⬡' },
+    { id:'mirror', name:'Spiegel', icon:'≡' }
   ];
   const PALETTES = {
     party:  { label:'Party',  hue:280 },
@@ -180,7 +191,7 @@
   let ably = null, channel = null, connected = false, showSeen = 0;
   let st = { effect:null, auto:true, palette:'party', cycle:false, sens:6, gain:1, panelHidden:false, active:false, source:'none', deviceId:'', devices:[], msg:'', file:'', paused:false };
   let radar = { r:0, ago:-1, why:'' };
-  const dragUntil = { sens:0, gain:0 };
+  const dragUntil = { sens:0, gain:0, trail:0 };
 
   function lsGet(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } }
   function lsSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
@@ -225,6 +236,7 @@
     }
     const now = Date.now();
     if (now > dragUntil.sens){ sensEl.value = st.sens; sensOut.textContent = st.sens; }
+    if (now > dragUntil.trail && st.trail != null){ $('trail').value = st.trail; $('trail-out').textContent = st.trail; }
     if (now > dragUntil.gain){ gainEl.value = st.gain; gainOut.textContent = Math.round(st.gain*100) + '%'; }
   }
   function renderRadar(){
@@ -283,6 +295,7 @@
     });
   }
   bindSlider(sensEl, 'sens', sensOut, v => String(Math.round(v)), 'sens');
+  bindSlider($('trail'), 'trail', $('trail-out'), v => String(Math.round(v)), 'trail');
   bindSlider(gainEl, 'gain', gainOut, v => Math.round(v*100) + '%', 'gain');
 
   // --- Ably ---
