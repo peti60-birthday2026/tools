@@ -40,6 +40,9 @@
   .primary { background:linear-gradient(135deg,#7c3aed,#c026d3); }
   .ghost { background:rgba(255,255,255,0.09); }
   .ghost:hover { background:rgba(255,255,255,0.15); }
+  .devs { display:grid; gap:8px; margin-top:12px; }
+  .devs button { text-align:left; padding:12px 14px; border-radius:12px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05); color:inherit; font:inherit; cursor:pointer; }
+  .devs button.active { border-color:#a855f7; background:rgba(168,85,247,0.2); }
   .btnrow { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
   #btn-connect { width:100%; margin-top:14px; }
 
@@ -101,6 +104,17 @@
         <div class="muted" id="live-last">Noch kein Wechsel erkannt</div>
       </div>
 
+      <div class="card" id="src-card">
+        <h2>Klangquelle</h2>
+        <div class="muted" id="src-now" style="margin-bottom:12px">Warte auf die Show &hellip;</div>
+        <div class="btnrow" style="margin-bottom:10px">
+          <button class="ghost" id="src-mic">Mikrofon / Eingang</button>
+          <button class="ghost" id="src-file">Datei</button>
+        </div>
+        <button class="ghost" id="src-stop" style="width:100%">Quelle stoppen</button>
+        <div id="src-devs" class="devs"></div>
+        <div class="muted" id="src-msg" style="margin-top:10px;font-size:13px"></div>
+      </div>
       <div class="card">
         <div class="btnrow">
           <button class="primary" id="btn-next">N&auml;chster Effekt</button>
@@ -121,7 +135,8 @@
 
     <section>
       <div class="card"><h2>Effekt</h2><div class="effects" id="effects"></div></div>
-      <div class="card"><h2>Farben</h2><div class="swatches" id="swatches"></div></div>
+      <div class="card"><h2>Farben</h2><div class="swatches" id="swatches"></div>
+        <div class="toggle" id="t-cycle2" style="margin-top:14px"><span>Farben flie&szlig;end wechseln</span><div class="switch"></div></div></div>
       <p class="note">Mikrofon, Datei, Tab-Audio und Vollbild lassen sich aus Browser-Sicherheitsgr&uuml;nden nur direkt am Show-Laptop starten. Alles andere steuerst du von hier.</p>
     </section>
   </div>
@@ -163,7 +178,7 @@
   const sensEl = $('sens'), gainEl = $('gain'), sensOut = $('sens-out'), gainOut = $('gain-out');
 
   let ably = null, channel = null, connected = false, showSeen = 0;
-  let st = { effect:null, auto:true, palette:'party', cycle:false, sens:6, gain:1, panelHidden:false, active:false };
+  let st = { effect:null, auto:true, palette:'party', cycle:false, sens:6, gain:1, panelHidden:false, active:false, source:'none', deviceId:'', devices:[], msg:'', file:'', paused:false };
   let radar = { r:0, ago:-1, why:'' };
   const dragUntil = { sens:0, gain:0 };
 
@@ -196,7 +211,18 @@
     swatchesEl.querySelectorAll('.sw').forEach(c => c.classList.toggle('active', c.dataset.k === st.palette));
     $('t-auto').classList.toggle('on', !!st.auto);
     $('t-cycle').classList.toggle('on', !!st.cycle);
+    $('t-cycle2').classList.toggle('on', !!st.cycle);
     $('btn-panel').textContent = st.panelHidden ? 'Panel einblenden' : 'Panel ausblenden';
+    const names = { none:'Keine Quelle aktiv', mic:'Mikrofon / Eingang aktiv', file:'Datei' + (st.paused ? ' (pausiert)' : ' läuft') + (st.file ? ': ' + st.file : ''), tab:'Tab-/System-Audio aktiv' };
+    $('src-now').textContent = eff ? (names[st.source] || '') : 'Warte auf die Show …';
+    $('src-msg').textContent = st.msg || '';
+    $('src-mic').classList.toggle('active', st.source === 'mic');
+    $('src-file').textContent = st.source === 'file' ? (st.paused ? 'Datei fortsetzen' : 'Datei pausieren') : 'Datei' + (st.file ? ' erneut abspielen' : '');
+    const devsEl = $('src-devs'), sig = JSON.stringify([st.devices, st.deviceId, st.source]);
+    if (devsEl.dataset.sig !== sig){
+      devsEl.dataset.sig = sig;
+      devsEl.innerHTML = (st.devices || []).map(d => '<button data-id="' + d.id.replace(/"/g,'') + '" class="' + (st.source === 'mic' && d.id === st.deviceId ? 'active' : '') + '">' + d.label.replace(/[<>&]/g,'') + '</button>').join('');
+    }
     const now = Date.now();
     if (now > dragUntil.sens){ sensEl.value = st.sens; sensOut.textContent = st.sens; }
     if (now > dragUntil.gain){ gainEl.value = st.gain; gainOut.textContent = Math.round(st.gain*100) + '%'; }
@@ -223,6 +249,14 @@
   }
 
   // --- Bedienung ---
+  function sendSrc(value, device){
+    if (!channel || !connected){ toast('Nicht verbunden'); return; }
+    Promise.resolve(channel.publish('cmd', { type:'source', value:value, device:device })).catch(() => toast('Senden fehlgeschlagen'));
+  }
+  $('src-mic').addEventListener('click', () => sendSrc('mic'));
+  $('src-file').addEventListener('click', () => sendSrc('file'));
+  $('src-stop').addEventListener('click', () => sendSrc('stop'));
+  $('src-devs').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) sendSrc('mic', b.dataset.id); });
   effectsEl.addEventListener('click', (e) => {
     const c = e.target.closest('.eff'); if (!c) return;
     st.effect = c.dataset.id; st.auto = false; render(); send('effect', st.effect);
@@ -232,7 +266,7 @@
     st.palette = c.dataset.k; st.cycle = false; render(); send('palette', st.palette);
   });
   $('t-auto').addEventListener('click', () => { st.auto = !st.auto; render(); send('auto', st.auto); });
-  $('t-cycle').addEventListener('click', () => { st.cycle = !st.cycle; render(); send('cycle', st.cycle); });
+  ['t-cycle','t-cycle2'].forEach(id => $(id).addEventListener('click', () => { st.cycle = !st.cycle; render(); send('cycle', st.cycle); }));
   $('btn-next').addEventListener('click', () => send('next'));
   $('btn-panel').addEventListener('click', () => { st.panelHidden = !st.panelHidden; render(); send('panel', st.panelHidden); });
 

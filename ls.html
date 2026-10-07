@@ -436,21 +436,37 @@
     resetSceneState();
   }
 
-  async function startMic(){
+  let sourceKind = 'none', sourceMsg = '', lastFile = null, micDeviceId = '', micDevices = [];
+  async function refreshDevices(){
+    try {
+      const all = await navigator.mediaDevices.enumerateDevices();
+      micDevices = all.filter(d => d.kind === 'audioinput' && d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications')
+        .map(d => ({ id: d.deviceId, label: (d.label || 'Eingang').slice(0, 60) }));
+    } catch(e){}
+  }
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener)
+    navigator.mediaDevices.addEventListener('devicechange', () => { refreshDevices().then(() => publishState(false)); });
+
+  async function startMic(deviceId){
+    if (typeof deviceId !== 'string') deviceId = micDeviceId;
     stopAll();
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { deviceId: { exact: deviceId } } : true });
+      micDeviceId = deviceId || '';
+      sourceKind = 'mic'; sourceMsg = '';
+      refreshDevices().then(() => publishState(false));
       setupAnalyser();
       source = audioCtx.createMediaStreamSource(stream);
       source.connect(gainNode);
       gainNode.connect(analyser);
       statusEl.innerHTML = '<b>Mikrofon aktiv</b><br>Musik läuft über Lautsprecher.';
       draw();
-    } catch(e){ statusEl.textContent = 'Mikrofonzugriff verweigert.'; }
+    } catch(e){ sourceKind = 'none'; sourceMsg = 'Mikrofon nicht freigegeben (am Show-Laptop einmal erlauben).'; statusEl.textContent = 'Mikrofonzugriff verweigert.'; publishState(false); }
   }
 
   function loadFile(file){
     stopAll();
+    lastFile = file; sourceKind = 'file'; sourceMsg = '';
     const url = URL.createObjectURL(file);
     audioEl.src = url;
     setupAnalyser();
@@ -469,6 +485,7 @@
     if (stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
     if (audioCtx){ try{audioCtx.close();}catch(e){} audioCtx=null; }
     audioEl.pause();
+    sourceKind = 'none';
     ctx.clearRect(0,0,canvas.width,canvas.height);
   }
 
@@ -486,6 +503,7 @@
       }
       displayStream.getVideoTracks().forEach(t => t.stop());
       stream = displayStream;
+      sourceKind = 'tab'; sourceMsg = '';
       setupAnalyser();
       source = audioCtx.createMediaStreamSource(displayStream);
       source.connect(gainNode);
@@ -501,7 +519,7 @@
   btnFile.addEventListener('click', () => fileInput.click());
   document.getElementById('btn-tabaudio').addEventListener('click', startTabAudio);
   fileInput.addEventListener('change', (e) => { if (e.target.files[0]) loadFile(e.target.files[0]); });
-  btnStop.addEventListener('click', () => { stopAll(); statusEl.textContent = 'Gestoppt.'; });
+  btnStop.addEventListener('click', () => { stopAll(); statusEl.textContent = 'Gestoppt.'; publishState(false); });
   audioEl.addEventListener('play', () => { if (autoMode) switchToRandomEffect(); });
 
   const sensSlider = document.getElementById('sens-slider');
@@ -654,7 +672,9 @@
     return {
       effect: currentEffect, auto: autoMode, palette: paletteKey, cycle: cycleColors,
       sens: parseInt(sensSlider.value, 10), gain: parseFloat(gainSlider.value),
-      panelHidden: panel.classList.contains('hidden'), active: !!audioCtx
+      panelHidden: panel.classList.contains('hidden'), active: !!audioCtx,
+      source: sourceKind, deviceId: micDeviceId, devices: micDevices, msg: sourceMsg,
+      file: lastFile ? lastFile.name : '', paused: sourceKind === 'file' ? audioEl.paused : false
     };
   }
   function publishState(force){
@@ -678,6 +698,16 @@
       case 'cycle': setCycle(d.value); break;
       case 'sens': setSens(d.value); break;
       case 'gain': setGain(d.value); break;
+      case 'source':
+        if (d.value === 'mic') startMic(typeof d.device === 'string' ? d.device : undefined);
+        else if (d.value === 'stop'){ stopAll(); statusEl.textContent = 'Gestoppt.'; }
+        else if (d.value === 'file'){
+          if (sourceKind === 'file'){ if (audioEl.paused) audioEl.play(); else audioEl.pause(); }
+          else if (lastFile) loadFile(lastFile);
+          else sourceMsg = 'Noch keine Datei geladen (am Show-Laptop einmal wählen).';
+        }
+        else if (d.value === 'tab') sourceMsg = 'Tab-/System-Audio kann nur am Show-Laptop gestartet werden.';
+        break;
       case 'panel': if (d.value === 'toggle') togglePanel(); else setPanelHidden(!!d.value); break;
     }
     publishState(false);
@@ -736,6 +766,9 @@
   } else if (ablyKeyEl.value && ablyRoomEl.value && lsGet('ls_ably_auto') === '1') connectAbly();
   if (!ablyKeyEl.value) document.getElementById('remote-box').open = true;
 
+  audioEl.addEventListener('pause', () => publishState(false));
+  audioEl.addEventListener('play', () => publishState(false));
+  refreshDevices();
   setInterval(() => { if (ablyReady() && remoteActive()) publishState(false); }, 400);
 
   function shiftedHues(pal){
